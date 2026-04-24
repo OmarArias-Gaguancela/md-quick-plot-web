@@ -200,6 +200,7 @@ async def extract_frame(
     time_ns: float = Form(...),
     selection: str = Form("protein or resname LIG"),
     output_name: str = Form("extracted_frame.pdb"),
+    dt_in_ps: float = Form(0.0),
 ):
     from analyzer import extract_frame_from_trajectory
 
@@ -218,10 +219,13 @@ async def extract_frame(
         output_name += ".pdb"
     out_path = job_dir / output_name
 
+    dt = dt_in_ps if dt_in_ps and dt_in_ps > 0 else None
+
     try:
         frame_idx, actual_time = extract_frame_from_trajectory(
             str(topo_path), str(traj_path), time_ns,
             output_pdb=str(out_path), selection=selection,
+            dt_in_ps=dt,
         )
         return FileResponse(
             str(out_path), media_type="chemical/x-pdb",

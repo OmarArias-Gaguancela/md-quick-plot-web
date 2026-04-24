@@ -403,8 +403,11 @@ class MDAnalyzer:
 
 def extract_frame_from_trajectory(topology_file, trajectory_file, time_ns,
                                    output_pdb="extracted_frame.pdb",
-                                   selection="all"):
-    u = mda.Universe(topology_file, trajectory_file)
+                                   selection="all", dt_in_ps=None):
+    if dt_in_ps:
+        u = mda.Universe(topology_file, trajectory_file, dt=dt_in_ps)
+    else:
+        u = mda.Universe(topology_file, trajectory_file)
     times_ns = np.array([ts.time / 1000.0 for ts in u.trajectory])
     frame_idx = int(np.argmin(np.abs(times_ns - time_ns)))
     actual_time = float(times_ns[frame_idx])
