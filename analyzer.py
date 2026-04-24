@@ -9,6 +9,7 @@ matplotlib.use("Agg")  # Non-interactive backend for server use
 import matplotlib.pyplot as plt
 import seaborn as sns
 import numpy as np
+import pandas as pd
 from scipy.ndimage import gaussian_filter
 import warnings
 warnings.filterwarnings("ignore")
@@ -16,6 +17,18 @@ warnings.filterwarnings("ignore")
 sns.set_style("whitegrid")
 plt.rcParams["figure.dpi"] = 300
 plt.rcParams["font.size"] = 10
+
+
+def _to_sci(value: float, decimals: int = 2) -> str:
+    """Format a float in scientific notation with Unicode superscripts.
+    e.g. -12345.67 → '-1.23 × 10⁴'
+    """
+    formatted = f"{value:.{decimals}e}"
+    mantissa, exp = formatted.split("e")
+    exp_int = int(exp)
+    superscript_map = str.maketrans("-0123456789", "⁻⁰¹²³⁴⁵⁶⁷⁸⁹")
+    exp_str = str(exp_int).translate(superscript_map)
+    return f"{mantissa} × 10{exp_str}"
 
 
 class MDAnalyzer:
@@ -77,10 +90,19 @@ class MDAnalyzer:
         plt.savefig(save_path, dpi=300, bbox_inches="tight")
         plt.close(fig)
 
+        # --- CSV export ---
+        csv_path = save_path.replace(".png", ".csv")
+        pd.DataFrame({
+            "Frame":          np.arange(len(time_ns)),
+            "Time_ns":        np.round(time_ns, 4),
+            "RMSD_Angstrom":  np.round(rmsd_values, 4),
+        }).to_csv(csv_path, index=False)
+
         return {
             "plot": save_path,
+            "csv":  csv_path,
             "mean": round(mean_rmsd, 3),
-            "std": round(std_rmsd, 3),
+            "std":  round(std_rmsd, 3),
             "unit": "Å",
         }
 
@@ -114,12 +136,21 @@ class MDAnalyzer:
         plt.savefig(save_path, dpi=300, bbox_inches="tight")
         plt.close(fig)
 
+        # --- CSV export ---
+        csv_path = save_path.replace(".png", ".csv")
+        pd.DataFrame({
+            "Residue_Number":    residues,
+            "RMSF_Angstrom":     np.round(rmsf_values, 4),
+            "High_Fluctuation":  high_fluct.astype(int),
+        }).to_csv(csv_path, index=False)
+
         return {
-            "plot": save_path,
-            "mean": round(mean_rmsf, 3),
-            "std": round(std_rmsf, 3),
+            "plot":        save_path,
+            "csv":         csv_path,
+            "mean":        round(mean_rmsf, 3),
+            "std":         round(std_rmsf, 3),
             "max_residue": max_res,
-            "unit": "Å",
+            "unit":        "Å",
         }
 
     # ------------------------------------------------------------------ Rg
@@ -148,10 +179,19 @@ class MDAnalyzer:
         plt.savefig(save_path, dpi=300, bbox_inches="tight")
         plt.close(fig)
 
+        # --- CSV export ---
+        csv_path = save_path.replace(".png", ".csv")
+        pd.DataFrame({
+            "Frame":       np.arange(len(time_ns)),
+            "Time_ns":     np.round(time_ns, 4),
+            "Rg_Angstrom": np.round(rg_values, 4),
+        }).to_csv(csv_path, index=False)
+
         return {
             "plot": save_path,
+            "csv":  csv_path,
             "mean": round(mean_rg, 3),
-            "std": round(std_rg, 3),
+            "std":  round(std_rg, 3),
             "unit": "Å",
         }
 
@@ -210,13 +250,30 @@ class MDAnalyzer:
         plt.savefig(save_path, dpi=300, bbox_inches="tight")
         plt.close(fig)
 
+        # --- CSV export ---
+        # Per-frame table: RMSD, Rg, and the free energy at each frame's bin
+        csv_path = save_path.replace(".png", ".csv")
+        rmsd_bin_idx = np.clip(np.digitize(rmsd_values, xedges[:-1]) - 1,
+                               0, fel_smooth.shape[0] - 1)
+        rg_bin_idx   = np.clip(np.digitize(rg_values,   yedges[:-1]) - 1,
+                               0, fel_smooth.shape[1] - 1)
+        frame_fel = fel_smooth[rmsd_bin_idx, rg_bin_idx]
+
+        pd.DataFrame({
+            "Frame":              np.arange(len(rmsd_values)),
+            "RMSD_Angstrom":      np.round(rmsd_values, 4),
+            "Rg_Angstrom":        np.round(rg_values,   4),
+            "FreeEnergy_kcalmol": np.round(frame_fel,   4),
+        }).to_csv(csv_path, index=False)
+
         return {
-            "plot": save_path,
-            "min_frame": min_frame_idx,
+            "plot":        save_path,
+            "csv":         csv_path,
+            "min_frame":   min_frame_idx,
             "min_time_ns": round(min_time_ns, 3),
-            "min_rmsd": round(min_rmsd, 3),
-            "min_rg": round(min_rg, 3),
-            "unit": "kcal/mol",
+            "min_rmsd":    round(min_rmsd, 3),
+            "min_rg":      round(min_rg, 3),
+            "unit":        "kcal/mol",
         }
 
     # ------------------------------------------------------------------ Binding Energy
@@ -247,7 +304,11 @@ class MDAnalyzer:
             return None
 
         mean_e = float(np.mean(energies))
-        std_e = float(np.std(energies))
+        std_e  = float(np.std(energies))
+
+        # Scientific notation for the legend
+        mean_sci = _to_sci(mean_e)
+        std_sci  = _to_sci(std_e)
 
         fig, ax = plt.subplots(figsize=(6, 4))
         ax.plot(time_ns, energies, linewidth=1.5, color="#6A4C93")
@@ -256,17 +317,28 @@ class MDAnalyzer:
         ax.set_title("Protein-Ligand Interaction Energy", fontsize=14, fontweight="bold")
         ax.grid(alpha=0.3)
         ax.axhline(mean_e, color="red", linestyle="--", alpha=0.7,
-                   label=f"Mean: {mean_e:.2f} kJ/mol")
-        ax.legend()
+                   label=f"Mean: {mean_sci} kJ/mol\nSD:    {std_sci} kJ/mol")
+        ax.legend(fontsize=9)
         plt.tight_layout()
         plt.savefig(save_path, dpi=300, bbox_inches="tight")
         plt.close(fig)
 
+        # --- CSV export ---
+        csv_path = save_path.replace(".png", ".csv")
+        pd.DataFrame({
+            "Frame":                    np.arange(len(time_ns)),
+            "Time_ns":                  np.round(time_ns, 4),
+            "InteractionEnergy_kJmol":  np.round(energies, 4),
+        }).to_csv(csv_path, index=False)
+
         return {
-            "plot": save_path,
-            "mean": round(mean_e, 3),
-            "std": round(std_e, 3),
-            "unit": "kJ/mol",
+            "plot":     save_path,
+            "csv":      csv_path,
+            "mean":     round(mean_e, 3),
+            "std":      round(std_e, 3),
+            "mean_sci": mean_sci,
+            "std_sci":  std_sci,
+            "unit":     "kJ/mol",
         }
 
     # ------------------------------------------------------------------ P-L Distance
@@ -312,11 +384,20 @@ class MDAnalyzer:
         plt.savefig(save_path, dpi=300, bbox_inches="tight")
         plt.close(fig)
 
+        # --- CSV export ---
+        csv_path = save_path.replace(".png", ".csv")
+        pd.DataFrame({
+            "Frame":                np.arange(len(time_ns)),
+            "Time_ns":              np.round(time_ns, 4),
+            "MinDistance_Angstrom": np.round(distances, 4),
+        }).to_csv(csv_path, index=False)
+
         return {
-            "plot": save_path,
-            "mean": round(mean_dist, 3),
+            "plot":        save_path,
+            "csv":         csv_path,
+            "mean":        round(mean_dist, 3),
             "contact_pct": round(contact_pct, 1),
-            "unit": "Å",
+            "unit":        "Å",
         }
 
 

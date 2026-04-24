@@ -61,13 +61,13 @@ def run_analysis(job_id: str, job_dir: Path, topology: str, trajectory: str,
         current_progress = 10
 
         analysis_map = {
-            "rmsd": ("RMSD", lambda: analyzer.plot_rmsd(str(job_dir / "rmsd.png"))),
-            "rmsf": ("RMSF", lambda: analyzer.plot_rmsf(str(job_dir / "rmsf.png"))),
-            "rg":   ("Radius of Gyration", lambda: analyzer.plot_rg(str(job_dir / "rg.png"))),
-            "fel":  ("Free Energy Landscape", lambda: analyzer.plot_free_energy_landscape(
-                         str(job_dir / "fel.png"), temperature=temperature)),
-            "binding": ("Binding Energy", lambda: analyzer.plot_binding_energy(
-                            str(job_dir / "binding_energy.png"))),
+            "rmsd":     ("RMSD", lambda: analyzer.plot_rmsd(str(job_dir / "rmsd.png"))),
+            "rmsf":     ("RMSF", lambda: analyzer.plot_rmsf(str(job_dir / "rmsf.png"))),
+            "rg":       ("Radius of Gyration", lambda: analyzer.plot_rg(str(job_dir / "rg.png"))),
+            "fel":      ("Free Energy Landscape", lambda: analyzer.plot_free_energy_landscape(
+                             str(job_dir / "fel.png"), temperature=temperature)),
+            "binding":  ("Binding Energy", lambda: analyzer.plot_binding_energy(
+                             str(job_dir / "binding_energy.png"))),
             "distance": ("P-L Distance", lambda: analyzer.plot_protein_ligand_distance(
                              str(job_dir / "pl_distance.png"))),
         }
@@ -89,6 +89,9 @@ def run_analysis(job_id: str, job_dir: Path, topology: str, trajectory: str,
             else:
                 plot_path = stat.pop("plot")
                 stat["image"] = _img_to_b64(plot_path)
+                # If a CSV was produced, store its filename so the frontend can reference it
+                if "csv" in stat:
+                    stat["csv_filename"] = Path(stat.pop("csv")).name
                 results[key] = stat
 
             current_progress += step_size
@@ -159,6 +162,7 @@ async def status(job_id: str):
 
 @app.get("/download/{job_id}")
 async def download(job_id: str):
+    """Download all figures AND CSV files as a single ZIP."""
     job_dir = JOBS_DIR / job_id
     if not job_dir.exists():
         return JSONResponse({"error": "Job not found"}, status_code=404)
@@ -167,9 +171,25 @@ async def download(job_id: str):
     with zipfile.ZipFile(zip_path, "w") as zf:
         for png in job_dir.glob("*.png"):
             zf.write(png, png.name)
+        for csv in job_dir.glob("*.csv"):
+            zf.write(csv, csv.name)
 
     return FileResponse(str(zip_path), media_type="application/zip",
                         filename="md_quick_plot_results.zip")
+
+
+@app.get("/download-csv/{job_id}/{filename}")
+async def download_csv(job_id: str, filename: str):
+    """Download a single CSV file for a specific analysis."""
+    # Safety: only allow .csv files and no path traversal
+    if not filename.endswith(".csv") or "/" in filename or ".." in filename:
+        return JSONResponse({"error": "Invalid filename"}, status_code=400)
+
+    csv_path = JOBS_DIR / job_id / filename
+    if not csv_path.exists():
+        return JSONResponse({"error": "File not found"}, status_code=404)
+
+    return FileResponse(str(csv_path), media_type="text/csv", filename=filename)
 
 
 @app.post("/extract-frame")
