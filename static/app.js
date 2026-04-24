@@ -210,15 +210,26 @@ function renderResults(results) {
       });
       card.appendChild(statsDiv);
 
-      // Download button
+      // Download buttons
       const footer = document.createElement('div');
       footer.className = 'result-card-footer';
+
       const dlBtn = document.createElement('a');
       dlBtn.className = 'btn btn-outline';
       dlBtn.textContent = '⬇ Download PNG';
       dlBtn.href = `data:image/png;base64,${r.image}`;
       dlBtn.download = `${key}.png`;
       footer.appendChild(dlBtn);
+
+      if (r.csv_filename) {
+        const csvBtn = document.createElement('a');
+        csvBtn.className = 'btn btn-outline';
+        csvBtn.textContent = '⬇ Download CSV';
+        csvBtn.href = `/download-csv/${currentJobId}/${r.csv_filename}`;
+        csvBtn.download = r.csv_filename;
+        footer.appendChild(csvBtn);
+      }
+
       card.appendChild(footer);
     }
 

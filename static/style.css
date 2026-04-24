@@ -379,10 +379,12 @@ nav { display: flex; gap: 1.5rem; }
 
 .result-card-footer {
   padding: 0 1rem 0.85rem;
+  display: flex;
+  gap: 0.5rem;
 }
 
 .result-card-footer .btn {
-  width: 100%;
+  flex: 1;
   font-size: 0.85rem;
   padding: 0.45rem;
 }
